@@ -1,8 +1,44 @@
 import json
 import time
+from enum import Enum
+from typing import Optional
+from pydantic import BaseModel
+
 import requests
 
 from gpiozero import LED, Button
+
+
+class State(Enum):
+    OPEN = "Open"
+    CLOSING = "Closing"
+    OPENING = "Opening"
+    CLOSED = "Closed"
+
+
+class StateDefinition(BaseModel):
+    sensor: tuple[int, int]  # top, bottom
+    previous: Optional[State]
+
+
+states: dict[State, StateDefinition] = {
+    State.OPEN: StateDefinition(
+        sensor=(1, 0),
+        previous=None
+    ),
+    State.CLOSED: StateDefinition(
+        sensor=(0, 1),
+        previous=None
+    ),
+    State.OPENING: StateDefinition(
+        sensor=(0, 0),
+        previous=State.CLOSED
+    ),
+    State.CLOSING: StateDefinition(
+        sensor=(0, 0),
+        previous=State.OPEN
+    ),
+}
 
 
 class GarageDoorController:
