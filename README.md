@@ -49,6 +49,8 @@ direction is reversed by external control before it has fully reached either
 extent, we can reset the state to a known good once it reaches the 
 top or the bottom. e.g.
 
+```
 Closed (0,1) -> Opening (0,0) -> [direction reversed] -> Closed (0,1)
 
 Open (1,0) -> Closing (0,0) -> [direction reversed] -> Open (1,0)
+```
