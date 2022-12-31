@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
 
+
 class State(Enum):
     OPEN = "Open"
     CLOSING = "Closing"
@@ -10,27 +11,32 @@ class State(Enum):
     CLOSED = "Closed"
 
 
+SensorData = tuple[int, int]
+
+
 class StateDefinition(BaseModel):
-    sensor: tuple[int, int]  # top, bottom
-    previous: Optional[State]
+    """Pydantic method describing a door state"""
+    sensor: SensorData  # top, bottom
+    last: Optional[State]
 
 
+# Define some door states, not sure if these would actually get used
 states: dict[State, StateDefinition] = {
     State.OPEN: StateDefinition(
         sensor=(1, 0),
-        previous=None
+        last=None
     ),
     State.CLOSED: StateDefinition(
         sensor=(0, 1),
-        previous=None
+        last=None
     ),
     State.OPENING: StateDefinition(
         sensor=(0, 0),
-        previous=State.CLOSED
+        last=State.CLOSED
     ),
     State.CLOSING: StateDefinition(
         sensor=(0, 0),
-        previous=State.OPEN
+        last=State.OPEN
     ),
 }
 
@@ -40,13 +46,71 @@ class DoorController:
     lastState: State = State.CLOSED
     lastUpdateTime: float = time.time()
 
-    #def __init__(self, state:State = State.CLOSED) -> None:
-    #    self.set_state(state)
-    
-    def set_the_state(self, state:State) -> None:
+    @staticmethod
+    def resolve_state(
+        sensor: SensorData,
+        current: State,
+        last: State,
+        delta: float
+    ) -> State:
+        """Resolves the current state from the passed information"""
+        state_by_sensor_data = [state for state, definition in states.items() if definition.sensor == sensor]
+
+        # If we got a direct match on OPEN or CLOSED, just return it, we are very confident about the state.
+        if len(state_by_sensor_data) == 1:
+            return state_by_sensor_data[0]
+
+        # If the state was opening or closing and current is the same as last, just assume its still in the same state. Could put a little timeout here.
+        if last == current:
+            return current
+
+        # If its a new state, decide if its opening or closing based on the last known state.
+        possible_states_from_last_known_state = [state for state, definition in states.items() if state in state_by_sensor_data and definition.last == current]
+
+        if len(possible_states_from_last_known_state) == 1:
+            return possible_states_from_last_known_state[0]
+
+        raise RuntimeError("Could not resolve state :(")
+
+    def set_the_state(self, state: State) -> None:
         self.lastState = self.state
-        self.state = state        
+        self.state = state
         self.lastUpdateTime = time.time()
+
+    def get_the_state(self) -> State:
+        return self.state
+
+    def open(self) -> State:
+        # check existing state
+        #   check last update time if something happened recently
+
+        # check sensor states - can we ask
+        pass
+
+    def update_state(self) -> State:
+        """Given the following:
+        - Sensor 1
+        - Sensor 2
+        - Current state
+        - Last state
+        - Last state update time
+
+        Resolve the new state, set it, and return it"""
+
+        new_state = self.resolve_state(
+            self.get_sensor_data(),
+            self.state,
+            self.lastState,
+            time.time() - self.lastUpdateTime
+        )
+
+        self.set_the_state(new_state)
+
+        return new_state
+
+    def get_sensor_data(self):
+        # TODO: implementation for getting sensor states
+        return 1, 1
 
 # class GarageDoorController:
 #     last_state_update: float = time.time()
