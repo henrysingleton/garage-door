@@ -14,6 +14,14 @@ class State(Enum):
 SensorData = tuple[int, int]
 
 
+class StateResolutionError(RuntimeError):
+    pass
+
+
+class StateUpdateDebounceException(StateResolutionError):
+    pass
+
+
 class StateDefinition(BaseModel):
     """Pydantic method describing a door state"""
     sensor: SensorData  # top, bottom
@@ -42,9 +50,12 @@ states: dict[State, StateDefinition] = {
 
 
 class DoorController:
-    state: State = State.CLOSED
-    lastState: State = State.CLOSED
-    lastUpdateTime: float = time.time()
+    STATE_DEBOUNCE: float = 4.0  # seconds
+
+    def __init__(self) -> None:
+        self.state: State = State.CLOSED
+        self.lastState: State = State.CLOSED
+        self.lastUpdateTime: float = time.time()
 
     @staticmethod
     def resolve_state(
@@ -54,23 +65,51 @@ class DoorController:
         delta: float
     ) -> State:
         """Resolves the current state from the passed information"""
+        print(
+            f"\n Resolving state with: \n"
+            f" sensor: {sensor}\n"
+            f" current: {current.value}\n"
+            f" last: {last.value}\n"
+            f" delta: {delta}"
+        )
+
+        if delta < DoorController.STATE_DEBOUNCE:
+            print(f"Refusing to update, last state change was "
+                  f"{delta} seconds ago")
+            raise StateUpdateDebounceException(delta)
+
         state_by_sensor_data = [state for state, definition in states.items() if definition.sensor == sensor]
 
         # If we got a direct match on OPEN or CLOSED, just return it, we are very confident about the state.
         if len(state_by_sensor_data) == 1:
+            print(
+                f"resolved to {state_by_sensor_data[0].value} via "
+                f"direct sensor state match"
+            )
             return state_by_sensor_data[0]
 
-        # If the state was opening or closing and current is the same as last, just assume its still in the same state. Could put a little timeout here.
-        if last == current:
-            return current
 
         # If its a new state, decide if its opening or closing based on the last known state.
         possible_states_from_last_known_state = [state for state, definition in states.items() if state in state_by_sensor_data and definition.last == current]
 
         if len(possible_states_from_last_known_state) == 1:
+            print(
+                f"resolved to {possible_states_from_last_known_state[0].value}"
+                f" as we have transitioned from {current}"
+            )
             return possible_states_from_last_known_state[0]
 
-        raise RuntimeError("Could not resolve state :(")
+        # If the state was opening or closing and current is the same as last, just assume its still in the same state. Could put a little timeout here.
+        if last == current and states[current].last is not None:
+            print(
+                f"resolved to {current} as it's the same as the last opening "
+                f"or closing state ",
+            )
+            return current
+
+        raise StateResolutionError(
+            "Could not resolve state, no matches from state definition"
+        )
 
     def set_the_state(self, state: State) -> None:
         self.lastState = self.state
@@ -104,7 +143,10 @@ class DoorController:
             time.time() - self.lastUpdateTime
         )
 
-        self.set_the_state(new_state)
+        if new_state != self.lastState:
+            self.set_the_state(new_state)
+            # TODO: make request to homebridge to let them know the state
+            #  changed.
 
         return new_state
 
