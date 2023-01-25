@@ -2,13 +2,14 @@ import time
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
-
+from gpiozero import LED, Button
 
 class State(Enum):
     OPEN = "Open"
     CLOSING = "Closing"
     OPENING = "Opening"
     CLOSED = "Closed"
+    STOPPED = "Stopped"
 
 
 SensorData = tuple[int, int]
@@ -51,11 +52,18 @@ states: dict[State, StateDefinition] = {
 
 class DoorController:
     STATE_DEBOUNCE: float = 4.0  # seconds
+    DOOR_PIN = 23  # pin where door is connected
+    TOP_SENSOR_PIN = 24
+    BOTTOM_SENSOR_PIN = 25
 
     def __init__(self) -> None:
         self.state: State = State.CLOSED
         self.lastState: State = State.CLOSED
         self.lastUpdateTime: float = time.time()
+
+        self.door_pin = LED(DoorController.DOOR_PIN)
+        self.top_sensor = Button(DoorController.TOP_SENSOR_PIN)
+        self.bottom_sensor = Button(DoorController.BOTTOM_SENSOR_PIN)
 
     @staticmethod
     def resolve_state(
@@ -111,25 +119,92 @@ class DoorController:
             "Could not resolve state, no matches from state definition"
         )
 
-    def set_the_state(self, state: State) -> None:
+    def set_state(self, state: State) -> None:
         self.lastState = self.state
         self.state = state
         self.lastUpdateTime = time.time()
 
-    def get_the_state(self) -> State:
+    def get_state(self) -> State:
         return self.state
 
     def open(self) -> State:
-        # check existing state
-        #   check last update time if something happened recently
+        self.update_state()
+        if self.state == State.OPEN:
+            print(f"Not doing anything, door already open...")
+            return self.state
 
-        # check sensor states - can we ask
-        pass
+        if self.state == State.OPENING:
+            print(f"Not doing anything, door already opening")
+            return self.state
+
+        if self.state == State.STOPPED:
+            # Not sure if we'll ever know its stopped
+            if self.lastState == State.OPENING:
+                self.press_button()  # closing
+                self.press_button()  # stopped
+                self.press_button()  # opening
+                return State.OPENING
+
+            if self.lastState == State.CLOSING:
+                self.press_button()  # stopped
+                self.press_button()  # opening
+                return State.OPENING
+
+            raise RuntimeError(
+                "Not sure what to do from unknown state when opening")
+
+        if self.state == State.CLOSING:
+            self.press_button()  # stopped
+            self.press_button()  # opening
+            return State.OPENING
+
+        if self.state == State.CLOSED:
+            self.press_button()  # opening
+            return State.OPENING
+
+    def close(self) -> State:
+        self.update_state()
+        if self.state == State.CLOSED:
+            print(f"Not doing anything, door already closed...")
+            return self.state
+
+        if self.state == State.CLOSING:
+            print(f"Not doing anything, door already closing")
+            return self.state
+
+        if self.state == State.STOPPED:
+            # Not sure if we'll ever know its stopped
+            if self.lastState == State.CLOSING:
+                self.press_button()  # opening
+                self.press_button()  # stopped
+                self.press_button()  # closing
+                return State.CLOSING
+
+            if self.lastState == State.OPENING:
+                self.press_button()  # stopped
+                self.press_button()  # closing
+                return State.CLOSING
+
+            raise RuntimeError("Not sure what to do from unknown state when closing")
+
+        if self.state == State.OPENING:
+            self.press_button()  # stopped
+            self.press_button()  # closing
+            return State.CLOSING
+
+        if self.state == State.OPEN:
+            self.press_button()  # closing
+            return State.CLOSING
+
+    def press_button(self):
+        self.door_pin.on()
+        time.sleep(0.5)
+        self.door_pin.off()
+        time.sleep(0.5)
 
     def update_state(self) -> State:
         """Given the following:
-        - Sensor 1
-        - Sensor 2
+        - Sensor 1 & 2
         - Current state
         - Last state
         - Last state update time
@@ -144,7 +219,7 @@ class DoorController:
         )
 
         if new_state != self.lastState:
-            self.set_the_state(new_state)
+            self.set_state(new_state)
             # TODO: make request to homebridge to let them know the state
             #  changed.
 
@@ -153,39 +228,6 @@ class DoorController:
     def get_sensor_data(self):
         # TODO: implementation for getting sensor states
         return 1, 1
-
-# class GarageDoorController:
-#     last_state_update: float = time.time()
-#     last_activation: float = time.time()
-
-#     # Fine-tuning
-#     STATE_UPDATE_DEBOUNCE = 3  # in seconds
-#     TEMPORARY_STATE_TIMEOUT = (
-#         20  # in seconds. If a temporary state is older than this, handle it.
-#     )
-#     ACTIVATE_DOOR_WHEN_UNKNOWN_STATE = False
-
-#     def close_state_update(self):
-#         print("update state")
-#         self.update_state(states.CLOSED)
-
-#     def open_state_update(self):
-#         print("update state")
-#         self.update_state(states.OPEN)
-
-#     def __init__(self):
-#         print("initing")
-#         self.reset()
-#         self.current_state = states.UNKNOWN
-
-#         # Set up inputs and outputs
-#         self.door_pin = LED(23)
-
-#         open_stop_switch = Button(11)
-#         closed_stop_switch = Button(8)
-
-#         open_stop_switch.when_activated = self.open_state_update
-#         closed_stop_switch.when_activated = self.close_state_update
 
 #     def update_state(self, new_state):
 #         self.current_state = new_state
@@ -199,60 +241,3 @@ class DoorController:
 #                 }
 #             ),
 #         )
-
-#     def request_activate_door(self, desired_state):
-#         """Receive a request to activate the door. May or may not actually activate the door depending on the
-#         current state"""
-#         if time.time() < self.last_state_update + self.STATE_UPDATE_DEBOUNCE:
-#             print(
-#                 f"State {self.current_state} is {time.time() - self.last_state_update} seconds old, ignoring request"
-#             )
-#             return
-
-#         if (
-#             self.current_state is states.UNKNOWN
-#             and self.ACTIVATE_DOOR_WHEN_UNKNOWN_STATE
-#         ):
-#             # if we don't know what the current state is, just activate and hope that we'll figure it out soon?
-#             print("Unknown state, activating anyway!")
-#             self.activate_door()
-#             return
-
-#         if desired_state == self.current_state:
-#             print(f"Door is already {self.current_state}, refusing to activate door")
-#             return
-
-#         if self.current_state in TRANSITION_STATES:
-#             if time.time() > self.last_state_update + self.TEMPORARY_STATE_TIMEOUT:
-#                 print(
-#                     f"Transition state {self.current_state} is {time.time() - self.last_state_update} seconds old, handling request since something probalby went wrong!"
-#                 )
-#                 self.activate_door()
-#                 return
-#             else:
-#                 print(f"State is {self.current_state}, refusing to activate door")
-#                 return
-
-#         self.activate_door()
-
-#     def activate_door(self):
-#         print("Activating door!")
-#         self.last_activation = time.time()
-#         self.door_pin.on()
-#         time.sleep(1)
-#         self.door_pin.off()
-
-#         if self.current_state is states.CLOSED:
-#             self.update_state(states.OPENING)
-#             time.sleep(3)
-#             self.open_state_update()  # manually set for now
-#         if self.current_state is states.OPEN:
-#             self.update_state(states.CLOSING)
-#             time.sleep(3)
-#             self.close_state_update()  # manually set for now
-
-#     def reset(self):
-#         self.last_state_update = 0
-#         self.last_activation = 0
-
-
