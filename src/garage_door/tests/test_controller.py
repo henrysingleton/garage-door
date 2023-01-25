@@ -7,11 +7,11 @@ def test_setting_state():
     # Manually set the door state externally. Probably should be part of the public API but oh well...
     controller = DoorController()
 
-    controller.set_the_state(State.OPEN)
+    controller.set_state(State.OPEN)
 
     assert controller.state == State.OPEN
 
-    controller.set_the_state(State.CLOSING)
+    controller.set_state(State.CLOSING)
 
     assert controller.state == State.CLOSING
     assert controller.lastState == State.OPEN
@@ -66,7 +66,7 @@ def test_open_door():
     """Test request to open the door..."""
     controller = DoorController()
 
-    controller.set_the_state(State.CLOSED)
+    controller.set_state(State.CLOSED)
     assert controller.open() == State.OPENING
 
 
