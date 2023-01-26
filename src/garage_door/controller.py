@@ -1,6 +1,6 @@
 import time
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel
 from gpiozero import LED, Button
 
@@ -51,7 +51,7 @@ states: dict[State, StateDefinition] = {
 
 
 class DoorController:
-    STATE_DEBOUNCE: float = 4.0  # seconds
+    STATE_DEBOUNCE: float = 0.3  # seconds
     DOOR_PIN = 23  # pin where door is connected
     TOP_SENSOR_PIN = 24
     BOTTOM_SENSOR_PIN = 25
@@ -62,8 +62,13 @@ class DoorController:
         self.lastUpdateTime: float = time.time()
 
         self.door_pin = LED(DoorController.DOOR_PIN)
-        self.top_sensor = Button(DoorController.TOP_SENSOR_PIN)
-        self.bottom_sensor = Button(DoorController.BOTTOM_SENSOR_PIN)
+        self.top_sensor = Button(DoorController.TOP_SENSOR_PIN, hold_time=2)
+        self.bottom_sensor = Button(DoorController.BOTTOM_SENSOR_PIN, hold_time=2)
+
+        self.top_sensor.when_held = self.update_state
+        self.top_sensor.when_deactivated = self.update_state
+        self.bottom_sensor.when_held = self.update_state
+        self.bottom_sensor.when_deactivated = self.update_state
 
     @staticmethod
     def resolve_state(
@@ -129,6 +134,7 @@ class DoorController:
 
     def open(self) -> State:
         self.update_state()
+        print(f"Doing opening...")
         if self.state == State.OPEN:
             print(f"Not doing anything, door already open...")
             return self.state
@@ -202,7 +208,7 @@ class DoorController:
         self.door_pin.off()
         time.sleep(0.5)
 
-    def update_state(self) -> State:
+    def update_state(self, sensor: Optional[Any] = None) -> State:
         """Given the following:
         - Sensor 1 & 2
         - Current state
@@ -211,6 +217,11 @@ class DoorController:
 
         Resolve the new state, set it, and return it"""
 
+        if sensor:
+            print(f"Updating state from sensor {sensor} change")
+
+        print(f"Updating state. Resolving first...")
+
         new_state = self.resolve_state(
             self.get_sensor_data(),
             self.state,
@@ -218,26 +229,16 @@ class DoorController:
             time.time() - self.lastUpdateTime
         )
 
+        print(f"Checking time diff")
+
         if new_state != self.lastState:
+            print(f"Saving state")
             self.set_state(new_state)
             # TODO: make request to homebridge to let them know the state
             #  changed.
+        print(f"Returning")
 
         return new_state
 
     def get_sensor_data(self):
-        # TODO: implementation for getting sensor states
-        return 1, 1
-
-#     def update_state(self, new_state):
-#         self.current_state = new_state
-#         self.last_state_update = time.time()
-#         requests.post(
-#             WEBHOOK_ADDRESS,
-#             data=json.dumps(
-#                 {
-#                     "characteristic": "CurrentDoorState",
-#                     "value": self.current_state[1],
-#                 }
-#             ),
-#         )
+        return self.top_sensor.value, self.bottom_sensor.value

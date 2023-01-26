@@ -1,44 +1,13 @@
-from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from controller import DoorController, State
 
 # Server settings
-HOST_NAME = "192.168.0.166"
+HOST_NAME = "192.168.0.202"
 SERVER_PORT = 8080
-WEBHOOK_ADDRESS = "http://192.168.0.25:8089/bay1"
+WEBHOOK_ADDRESS = "http://192.168.0.6:8089/bay1"
 
 
-@dataclass(frozen=True)
-class StatesNamespace:
-    UNKNOWN = (
-        "Unknown",
-        "unknown",
-    )
-    OPEN = (
-        "Open",
-        "0",
-    )
-    CLOSED = (
-        "Closed",
-        "1",
-    )
-    OPENING = (
-        "Opening",
-        "2",
-    )
-    CLOSING = (
-        "Closing",
-        "3",
-    )
-    STOPPED = (
-        "Stopped",
-        "4",
-    )
-
-
-states = StatesNamespace()
-
-TRANSITION_STATES = (states.OPENING, states.CLOSING)
-
+controller = DoorController()
 
 class WebServer(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -47,29 +16,32 @@ class WebServer(BaseHTTPRequestHandler):
         self.end_headers()
 
         if self.path == "/state":
-            print(f"Sending state {controller.current_state[0]}")
-            self.wfile.write(bytes(controller.current_state[1], "utf-8"))
+            state = controller.get_state()
+            print(f"Sending state {state.value}")
+            self.wfile.write(bytes(str(state.value), "utf-8"))
 
         if self.path == "/reset/closed":
-            # controller.reset()
-            controller.update_state(states.CLOSED)
+            controller.set_state(State.CLOSED)
         if self.path == "/reset/open":
-            # controller.reset()
-            controller.update_state(states.OPEN)
+            controller.set_state(State.OPEN)
 
     def do_PUT(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
 
+        state = controller.get_state()
+
         print(
-            f"Current state: {controller.current_state[0]}, last updated {controller.last_state_update}"
+            f"Current state: {state.value}, last updated {controller.lastUpdateTime}"
         )
 
+        print(self.path)
+
         if self.path == "/open":
-            controller.request_activate_door(states.OPEN)
+            controller.open()
         if self.path == "/close":
-            controller.request_activate_door(states.CLOSED)
+            controller.close()
 
 
 if __name__ == "__main__":
