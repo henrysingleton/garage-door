@@ -53,8 +53,8 @@ states: dict[State, StateDefinition] = {
 class DoorController:
     STATE_DEBOUNCE: float = 0.3  # seconds
     DOOR_PIN = 23  # pin where door is connected
-    TOP_SENSOR_PIN = 24
-    BOTTOM_SENSOR_PIN = 25
+    TOP_SENSOR_PIN = 25
+    BOTTOM_SENSOR_PIN = 24
 
     def __init__(self) -> None:
         self.state: State = State.CLOSED
