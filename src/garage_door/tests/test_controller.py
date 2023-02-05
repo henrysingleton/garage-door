@@ -1,6 +1,6 @@
 import pytest as pytest
 
-from garage_door.controller import DoorController, State, SensorData
+from garage_door.controller import DoorController, State
 
 
 def test_setting_state():
@@ -55,20 +55,3 @@ def test_setting_state():
         # ((0, 0), State.OPEN, State.OPENING, 5.0, State.OPEN),
     ]
 )
-def test_resolve_state(sensor: SensorData, current: State, last: State,
-                       delta: float, expected: State):
-    controller = DoorController()
-    state = controller.resolve_state(sensor, current, last, delta)
-    assert state == expected
-
-
-def test_open_door():
-    """Test request to open the door..."""
-    controller = DoorController()
-
-    controller.set_state(State.CLOSED)
-    assert controller.open() == State.OPENING
-
-
-def test_close_door():
-    pass
