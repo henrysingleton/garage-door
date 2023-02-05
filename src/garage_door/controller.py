@@ -1,244 +1,121 @@
 import time
+import json
 from enum import Enum
-from typing import Optional, Any
-from pydantic import BaseModel
+
+import requests
 from gpiozero import LED, Button
 
+
 class State(Enum):
-    OPEN = "Open"
-    CLOSING = "Closing"
-    OPENING = "Opening"
-    CLOSED = "Closed"
-    STOPPED = "Stopped"
-
-
-SensorData = tuple[int, int]
-
-
-class StateResolutionError(RuntimeError):
-    pass
-
-
-class StateUpdateDebounceException(StateResolutionError):
-    pass
-
-
-class StateDefinition(BaseModel):
-    """Pydantic method describing a door state"""
-    sensor: SensorData  # top, bottom
-    last: Optional[State]
-
-
-# Define some door states, not sure if these would actually get used
-states: dict[State, StateDefinition] = {
-    State.OPEN: StateDefinition(
-        sensor=(1, 0),
-        last=None
-    ),
-    State.CLOSED: StateDefinition(
-        sensor=(0, 1),
-        last=None
-    ),
-    State.OPENING: StateDefinition(
-        sensor=(0, 0),
-        last=State.CLOSED
-    ),
-    State.CLOSING: StateDefinition(
-        sensor=(0, 0),
-        last=State.OPEN
-    ),
-}
+    OPEN = "0"
+    CLOSED = "1"
+    OPENING = "2"
+    CLOSING = "3"
+    STOPPED = "4"
 
 
 class DoorController:
-    STATE_DEBOUNCE: float = 0.3  # seconds
-    DOOR_PIN = 23  # pin where door is connected
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, state: State) -> None:
+        print(f"Set state: {state}")
+        # Make call to webhook
+        response = requests.post("http://192.168.0.6:8089/bay1", data=json.dumps({
+            "characteristic": "CurrentDoorState",
+            "value": str(state.value)
+        }))
+        if not response.status_code == 200:
+            print(f"Warning: failed to update webhook with door state {state.name}.")
+            print(f"  Status code: {response.status_code}")
+            print(f"  Message: {response.text}")
+
+        if state != self.state:
+            self._state = state
+
+    # Physical configuration
+    DOOR_PIN = 23  # pin where door relay is connected
     TOP_SENSOR_PIN = 25
     BOTTOM_SENSOR_PIN = 24
+    PIN_HOLD_TIME = 1
 
     def __init__(self) -> None:
-        self.state: State = State.CLOSED
-        self.lastState: State = State.CLOSED
-        self.lastUpdateTime: float = time.time()
-
+        # Pin configuration
         self.door_pin = LED(DoorController.DOOR_PIN)
-        self.top_sensor = Button(DoorController.TOP_SENSOR_PIN, hold_time=2)
-        self.bottom_sensor = Button(DoorController.BOTTOM_SENSOR_PIN, hold_time=2)
+        self.top_sensor = Button(DoorController.TOP_SENSOR_PIN, hold_time=DoorController.PIN_HOLD_TIME)
+        self.bottom_sensor = Button(DoorController.BOTTOM_SENSOR_PIN, hold_time=DoorController.PIN_HOLD_TIME)
 
-        self.top_sensor.when_held = self.update_state
-        self.top_sensor.when_deactivated = self.update_state
-        self.bottom_sensor.when_held = self.update_state
-        self.bottom_sensor.when_deactivated = self.update_state
+        # Set the initial sensor state
+        self._state = State.STOPPED
 
-    @staticmethod
-    def resolve_state(
-        sensor: SensorData,
-        current: State,
-        last: State,
-        delta: float
-    ) -> State:
-        """Resolves the current state from the passed information"""
-        print(
-            f"\n Resolving state with: \n"
-            f" sensor: {sensor}\n"
-            f" current: {current.value}\n"
-            f" last: {last.value}\n"
-            f" delta: {delta}"
-        )
+        # Update state from sensor data
+        self.set_state_from_sensors()
 
-        if delta < DoorController.STATE_DEBOUNCE:
-            print(f"Refusing to update, last state change was "
-                  f"{delta} seconds ago")
-            raise StateUpdateDebounceException(delta)
+        # Add handlers to update the state when the sensors change
+        self.top_sensor.when_held = self.handle_open
+        self.top_sensor.when_deactivated = self.handle_closing
+        self.bottom_sensor.when_held = self.handle_closed
+        self.bottom_sensor.when_deactivated = self.handle_opening
 
-        state_by_sensor_data = [state for state, definition in states.items() if definition.sensor == sensor]
+    def set_state_from_sensors(self):
+        # use is_active instead of is_held in case the program just started
+        # and we don't have any hold time history
+        if self.top_sensor.is_active:
+            self.state = State.OPEN
+        elif self.bottom_sensor.is_active:
+            self.state = State.CLOSED
+        else:
+            self.state = State.STOPPED
+            print(f"Couldn't determine state from sensors, set to {self.state.name}")
 
-        # If we got a direct match on OPEN or CLOSED, just return it, we are very confident about the state.
-        if len(state_by_sensor_data) == 1:
-            print(
-                f"resolved to {state_by_sensor_data[0].value} via "
-                f"direct sensor state match"
-            )
-            return state_by_sensor_data[0]
+    # Handle sensor transitions
+    def handle_open(self):
+        self.state = State.OPEN
 
+    def handle_closing(self):
+        self.state = State.CLOSING
 
-        # If its a new state, decide if its opening or closing based on the last known state.
-        possible_states_from_last_known_state = [state for state, definition in states.items() if state in state_by_sensor_data and definition.last == current]
+    def handle_closed(self):
+        self.state = State.CLOSED
 
-        if len(possible_states_from_last_known_state) == 1:
-            print(
-                f"resolved to {possible_states_from_last_known_state[0].value}"
-                f" as we have transitioned from {current}"
-            )
-            return possible_states_from_last_known_state[0]
+    def handle_opening(self):
+        self.state = State.OPENING
 
-        # If the state was opening or closing and current is the same as last, just assume its still in the same state. Could put a little timeout here.
-        if last == current and states[current].last is not None:
-            print(
-                f"resolved to {current} as it's the same as the last opening "
-                f"or closing state ",
-            )
-            return current
-
-        raise StateResolutionError(
-            "Could not resolve state, no matches from state definition"
-        )
-
-    def set_state(self, state: State) -> None:
-        self.lastState = self.state
-        self.state = state
-        self.lastUpdateTime = time.time()
-
-    def get_state(self) -> State:
-        return self.state
-
-    def open(self) -> State:
-        self.update_state()
-        print(f"Doing opening...")
-        if self.state == State.OPEN:
-            print(f"Not doing anything, door already open...")
-            return self.state
-
-        if self.state == State.OPENING:
-            print(f"Not doing anything, door already opening")
-            return self.state
-
-        if self.state == State.STOPPED:
-            # Not sure if we'll ever know its stopped
-            if self.lastState == State.OPENING:
-                self.press_button()  # closing
-                self.press_button()  # stopped
-                self.press_button()  # opening
-                return State.OPENING
-
-            if self.lastState == State.CLOSING:
-                self.press_button()  # stopped
-                self.press_button()  # opening
-                return State.OPENING
-
-            raise RuntimeError(
-                "Not sure what to do from unknown state when opening")
-
-        if self.state == State.CLOSING:
-            self.press_button()  # stopped
-            self.press_button()  # opening
-            return State.OPENING
-
-        if self.state == State.CLOSED:
-            self.press_button()  # opening
-            return State.OPENING
-
-    def close(self) -> State:
-        self.update_state()
-        if self.state == State.CLOSED:
-            print(f"Not doing anything, door already closed...")
-            return self.state
-
-        if self.state == State.CLOSING:
-            print(f"Not doing anything, door already closing")
-            return self.state
-
-        if self.state == State.STOPPED:
-            # Not sure if we'll ever know its stopped
-            if self.lastState == State.CLOSING:
-                self.press_button()  # opening
-                self.press_button()  # stopped
-                self.press_button()  # closing
-                return State.CLOSING
-
-            if self.lastState == State.OPENING:
-                self.press_button()  # stopped
-                self.press_button()  # closing
-                return State.CLOSING
-
-            raise RuntimeError("Not sure what to do from unknown state when closing")
-
-        if self.state == State.OPENING:
-            self.press_button()  # stopped
-            self.press_button()  # closing
-            return State.CLOSING
-
-        if self.state == State.OPEN:
-            self.press_button()  # closing
-            return State.CLOSING
-
+    # Handle open/close requests
     def press_button(self):
+        print("Pressing button...")
         self.door_pin.on()
         time.sleep(0.5)
         self.door_pin.off()
         time.sleep(0.5)
 
-    def update_state(self, sensor: Optional[Any] = None) -> State:
-        """Given the following:
-        - Sensor 1 & 2
-        - Current state
-        - Last state
-        - Last state update time
+    def open(self):
+        if self.state == State.CLOSING:
+            self.press_button()
+            self.state = State.OPENING
 
-        Resolve the new state, set it, and return it"""
+        if self.state == State.CLOSED:
+            self.press_button()  # opening
+            # Let sensor changes take care of changing the state to opening
+            # self.state = State.OPENING
 
-        if sensor:
-            print(f"Updating state from sensor {sensor} change")
+        print(f"Requested `/open` but door is {self.state.name}")
 
-        print(f"Updating state. Resolving first...")
+    def close(self):
+        if self.state == State.OPENING:
+            self.press_button()
+            self.state = State.STOPPED
+            time.sleep(1.1)
+            self.press_button()
+            self.state = State.CLOSING
 
-        new_state = self.resolve_state(
-            self.get_sensor_data(),
-            self.state,
-            self.lastState,
-            time.time() - self.lastUpdateTime
-        )
+        if self.state == State.OPEN:
+            self.press_button()  # closing
+            # Let sensor changes take care of changing the state to opening
+            # self.state = State.CLOSING
 
-        print(f"Checking time diff")
+        print(f"Requested `/close` but door is {self.state.name}")
 
-        if new_state != self.lastState:
-            print(f"Saving state")
-            self.set_state(new_state)
-            # TODO: make request to homebridge to let them know the state
-            #  changed.
-        print(f"Returning")
 
-        return new_state
-
-    def get_sensor_data(self):
-        return self.top_sensor.value, self.bottom_sensor.value
