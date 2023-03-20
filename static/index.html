@@ -1,0 +1,114 @@
+<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Garage Remote</title>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#000" media="(prefers-color-scheme: light)" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!--    <link rel="manifest" href="site.webmanifest">-->
+<!--    <link rel="apple-touch-icon" href="icon.png">-->
+    <style type="text/css">
+        :root {
+            color-scheme: dark;
+        }
+        html {
+            /*color: hsl(210, 10%, 62%);*/
+            /*background: black;*/
+            font-size: 1em;
+            line-height: 1.4;
+            font-family: -apple-system;
+            padding: 6pt;
+            overflow: hidden;
+
+            /* nice and user-hostile */
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        body {
+            background: black;
+        }
+
+
+h2 {
+  opacity: 0.6;
+}
+
+.button-container {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+button {
+  font-size: 2em;
+  flex-grow: 1;
+  /*flex-basis: available;*/
+  flex-basis: 100%;
+  padding-top: 45pt;
+  padding-bottom: 45pt;
+  /*background: black;*/
+  /*color: hsl(210, 10%, 62%);*/
+    margin-bottom: 15pt;
+    border: none;
+}
+
+#state {
+    text-align: center;
+    padding: 25pt 0
+}
+
+#open {
+    background: hsl(70, 100%, 50%);
+}
+
+#close {
+    background: hsl(1, 100%, 50%);
+}
+
+#logger {
+  height: 4em;
+  overflow: scroll;
+}
+
+    </style>
+  </head>
+
+  <body>
+    <div id="state">Loading...</div>
+    <div class="button-container">
+      <button class="button" id="open">Open ⬆ </button>
+      <button class="button" id="close">Close ⬇ </button>
+      <button class="button" id="button">Button</button>
+    </div>
+    <pre id="logger"></pre>
+    <script type="text/ecmascript">
+      const host = "http://127.0.0.1:8080"
+      // Array index maps to int of homekit door states.
+      const states = ["OPEN", "CLOSED", "OPENING", "CLOSING", "STOPPED"]
+
+      const updatedState = async () => {
+        return document.querySelector('#state').innerHTML =
+                await fetch(host + '/state').then(logResponse).then(t => states[t]);
+      }
+
+      const logResponse = async (r) => {
+        const text = await r.text()
+        console.log('got response:', r, text)
+        document.querySelector('#logger').append(text + "\r\n")
+        return text
+      }
+
+      // Do initial update
+      updatedState()
+
+      document.addEventListener("click", (e) => {
+        if (e.target.id === "open" || e.target.id === "close") {
+          const url = host + '/' + e.target.id
+          console.log('sending request to ' + url)
+          fetch(url, { method: 'PUT'}).then(logResponse).then(updatedState);
+        }
+      })
+    </script>
+  </body>
+</html>
