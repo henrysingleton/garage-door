@@ -1,5 +1,6 @@
 import time
 import json
+import sys
 from enum import Enum
 
 import requests
@@ -21,7 +22,7 @@ class DoorController:
 
     @state.setter
     def state(self, state: State) -> None:
-        print(f"Set state: {state}")
+        print(f"Set state: {state}", file=sys.stdout)
         # Make call to webhook
         response = requests.post("http://192.168.0.6:8089/bay1", data=json.dumps({
             "characteristic": "CurrentDoorState",
