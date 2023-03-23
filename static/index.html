@@ -17,7 +17,7 @@
             /*background: black;*/
             font-size: 1em;
             line-height: 1.4;
-            font-family: -apple-system;
+            font-family: Serif;
             padding: 6pt;
             overflow: hidden;
 
@@ -27,7 +27,8 @@
             user-select: none;
         }
         body {
-            background: black;
+            background: rgba(94, 71, 71, 0.32);
+          text-align: center;
         }
 
 
@@ -38,75 +39,108 @@ h2 {
 .button-container {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 button {
   font-size: 2em;
   flex-grow: 1;
-  /*flex-basis: available;*/
   flex-basis: 100%;
   padding-top: 45pt;
   padding-bottom: 45pt;
-  /*background: black;*/
-  /*color: hsl(210, 10%, 62%);*/
     margin-bottom: 15pt;
-    border: none;
+  background: forestgreen;
+    border: 6px outset #ccc;
+  font-family: serif;
+  color: blue;
+    text-decoration: underline;
 }
 
 #state {
     text-align: center;
-    padding: 25pt 0
-}
-
-#open {
-    background: hsl(70, 100%, 50%);
+    padding: 25pt 0;
 }
 
 #close {
-    background: hsl(1, 100%, 50%);
+    background: darkred;
+}
+
+#button {
+  color: blue;
+    text-decoration: none;
+  background: #eee;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  flex-basis: 60%;
+  flex-grow: 0;
+  text-align: center;
 }
 
 #logger {
   height: 4em;
   overflow: scroll;
+  background: black;
 }
 
     </style>
   </head>
 
   <body>
-    <div id="state">Loading...</div>
+    <div id="state">
+      <img id="loading" src="data:image/gif;base64,R0lGODlhEAAQAKIHAAAAAICAgAD/AACAAP///8DAwAAAgP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQFFAAHACwAAAAAEAAQAAADR3gX3PowgDkljGDoIY032MYBD/hIoqWYSuO+wUNVM70QOI6mZFAIheBuo6oNNarLcXRpwZKQGqVAiuSuBOjiF+wWtAcp5ZAAACH5BAUUAAcALAMAAgAEAAMAAAMEKLqsCQAh+QQFFAAHACwIAAcABQAEAAADBCi63J0AIfkEBRQABwAsCAAHAAUABAAAAwQ4utydACH5BAUUAAcALAgABwAFAAQAAAMEKLrcnQAh+QQFFAAHACwIAAcABQAEAAADBDi63J0AIfkEBRQABwAsCAAHAAUABAAAAwQoutydADs=">
+      <span id="state_text"></span>
+    </div>
     <div class="button-container">
       <button class="button" id="open">Open ⬆ </button>
       <button class="button" id="close">Close ⬇ </button>
-      <button class="button" id="button">Button</button>
+      <button class="button" id="button">
+      <img src="data:image/gif;base64,R0lGODlhEAAQALMOAAQAABgAADkEADEcHFIIAFoQAGsQAGA8L6McBtY8ErF5VvTHd83HudrS1v///////yH/C05FVFNDQVBFMi4wAwEAAAAh+QQFAgAOACwAAAAAEAAQAAAEfNCdSZW1c7hBz1VMwygZNwSCURBEKgimExCGgRQuSwSA4wiIIKJGNAgCAR9hKEQkmAakz5CoOReNxdOYdFCdCay4upsmEpbsYq2o9hyE83lNfyK6AfRZUXci3l58FmdBZwY+PnlZcnsJXYh5C22Mj4gyS3JRlpsyADycEQAAIfkEBQIADgAsAQAAAA4AEAAABG9wuDkPvfdYdpUbgkMIQhAAJvCFYhGi6Ck6RjGWpumoDmKQqUAJACg4Ej5DwiDETRRIAwKhIAF7i56U6hrpFIopIpEgEc4AgWEyTRSEPcKEMPbd1gj5RLkc0XsXAgVLBoUOLhgOAgSFI4kTJzIYEQAAIfkEBQIADgAsAQAAAA4AEAAABGMwuEnrlFU5bd1wASCJ1yWEAQo6ZECgITAJrCMYJ7lKkoCcqdOEQCEgDIGTQOSaAAgJBAGYJBiItmhBKSkYDKBAQpsUWC0GDY5mQFgAicXkC06AKQF3dHLsTAoIR1h+LBgVEQAAIfkEBQIADgAsAgAAAA0AEAAABFfQyUnlqJgCt4MThHQEGwB4QkGkgiB1AegQCFGQ3tYaSG1wwATil0j8XDHh0JBQ/AqCAEGxRCQWCAkhqUQoFCGto6BsGlyZtARUcFAzP2s7QzimPRK8JAIAOw==" />
+        Buttan
+      </button>
     </div>
     <pre id="logger"></pre>
     <script type="text/ecmascript">
       const host = "http://192.168.0.202:8080"
       // Array index maps to int of homekit door states.
       const states = ["OPEN", "CLOSED", "OPENING", "CLOSING", "STOPPED"]
+      let debug = false
+      const stateContainer = document.querySelector('#state_text')
+      const loading = document.querySelector('#loading')
 
       const updatedState = async () => {
-        return document.querySelector('#state').innerHTML =
-                await fetch(host + '/state').then(logResponse).then(t => states[t]);
+        return stateContainer.innerHTML =
+                await fetch(host + '/state').then(logResponse).then(t => states[t]).then(e => {
+                  loading.style.display = 'none'
+                  return e
+                });
       }
 
       const logResponse = async (r) => {
-        const text = await r.text()
-        console.log('got response:', r, text)
-        document.querySelector('#logger').append(text + "\r\n")
+        let text = await r.text()
+        if (debug) {
+          console.log('got response:', r, text)
+          document.querySelector('#logger').append(text + "\r\n")
+        }
+
         return text
       }
 
       // Do initial update
       updatedState()
 
+      // Set up periodic updates
+      int_handle = window.setInterval(updatedState, 2000);
+
       document.addEventListener("click", (e) => {
         if (e.target.id === "open" || e.target.id === "close") {
           const url = host + '/' + e.target.id
           console.log('sending request to ' + url)
           fetch(url, { method: 'PUT'}).then(logResponse).then(updatedState);
+        }
+        if (e.target.id === "state_text") {
+          debug = true
+          stateContainer.innerHTML = ""
+          loading.style.display = ""
         }
       })
     </script>
