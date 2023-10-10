@@ -36,6 +36,12 @@ class DoorController:
         if state != self.state:
             self._state = state
 
+        # Also update the TargetDoorState. Not really sure why but maybe it will solve the weirdness we have with the stupid homekit state.
+        response = requests.post("http://192.168.0.6:8089/bay1", data=json.dumps({
+            "characteristic": "TargetDoorState",
+            "value": str(state.value)
+        }))
+
     # Physical configuration
     DOOR_PIN = 23  # pin where door relay is connected
     TOP_SENSOR_PIN = 25
