@@ -25,6 +25,9 @@ BOTTOM_SENSOR_PIN = 24
 PIN_HOLD_TIME = 2
 
 class DoorController:
+
+    DEBUG = False
+
     @property
     def current_state(self):
         return self._current_state
@@ -76,6 +79,16 @@ class DoorController:
 
 
     def __init__(self) -> None:
+        # Set the initial sensor state. This is just a guess and to set up
+        # our object with some sane defaults. It bypasses the homebridge
+        # webhooks so it may be out of sync for a second, but we immediately
+        # update the state based on the sensor next.
+        self._current_state = State.STOPPED
+        self._target_state = State.CLOSED
+
+        if self.DEBUG:
+            return
+
         # Pin configuration
         self.door_pin = LED(DOOR_PIN)
         self.top_sensor = Button(
@@ -86,13 +99,6 @@ class DoorController:
             BOTTOM_SENSOR_PIN,
             hold_time=PIN_HOLD_TIME
         )
-
-        # Set the initial sensor state. This is just a guess and to set up
-        # our object with some sane defaults. It bypasses the homebridge
-        # webhooks so it may be out of sync for a second, but we immediately
-        # update the state based on the sensor next.
-        self._current_state = State.STOPPED
-        self._target_state = State.CLOSED
 
         # Update state from the real sensor data
         self.set_state_from_sensors()
@@ -107,36 +113,29 @@ class DoorController:
         # use is_active instead of is_held in case the program just started,
         # and we don't have any hold time history
         if self.top_sensor.is_active:
-            self.current_state = State.OPEN
-            self.target_state = State.OPEN
+            self._current_state = State.OPEN
+            self._target_state = State.OPEN
         elif self.bottom_sensor.is_active:
-            self.current_state = State.CLOSED
-            self.target_state = State.CLOSED
+            self._current_state = State.CLOSED
+            self._target_state = State.CLOSED
         else:
-            self.current_state = State.STOPPED
-            print(f"Couldn't determine state from sensors, set to {self.current_state.name}")
+            self._current_state = State.STOPPED
+            print(f"Couldn't determine state from sensors, set to {State.STOPPED}")
 
     # Handle sensor transitions
-    # Note that we always set the target state first to match the actual state
-    # of the door. If we control the door outside of homekit (green button,
-    # remote, etc) homekit has now way of knowing what our intention is,
-    # so we just force it and assume its what we want.
-    # This might cause issues if the wind blows the door and breaks the top
-    # or bottom sensor, but it should reset itself ok.
     def handle_open(self):
-        self.target_state = State.OPEN # hack
+        self.target_state = State.OPEN
         self.current_state = State.OPEN
 
     def handle_closing(self):
-        self.target_state = State.CLOSING # hack
         self.current_state = State.CLOSING
 
     def handle_closed(self):
-        self.target_state = State.CLOSED # hack
+        self.target_state = State.CLOSED
         self.current_state = State.CLOSED
 
     def handle_opening(self):
-        self.target_state = State.OPEN # hack
+        self.target_state = State.OPEN # Remove?
         self.current_state = State.OPENING
 
     # Handle open/close requests
@@ -148,9 +147,7 @@ class DoorController:
         time.sleep(0.5)
 
     def open(self):
-
-        # Set the target state no matter what. Not a hack.
-        self.target_state = State.OPEN
+        print(f"Requested `/open`. Door is {self.current_state.name}")
 
         if self.current_state == State.CLOSING:
             self.press_button()
@@ -161,11 +158,10 @@ class DoorController:
         if self.current_state == State.CLOSED:
             self.press_button()
 
-        print(f"Requested `/open` but door is {self.current_state.name}")
+
 
     def close(self):
-        # Set the target state no matter what. Not a hack.
-        self.target_state = State.CLOSED
+        print(f"Requested `/close`. Door is {self.current_state.name}")
 
         if self.current_state == State.OPENING:
             self.press_button()
@@ -177,6 +173,5 @@ class DoorController:
         if self.current_state == State.OPEN:
             self.press_button()
 
-        print(f"Requested `/close` but door is {self.current_state.name}")
 
 
