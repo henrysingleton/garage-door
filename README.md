@@ -54,3 +54,10 @@ Closed (0,1) -> Opening (0,0) -> [direction reversed] -> Closed (0,1)
 
 Open (1,0) -> Closing (0,0) -> [direction reversed] -> Open (1,0)
 ```
+Deploying
+
+scp src/garage_door/controller.py garagedoor:~/garage-door/src/garage_door/controller.py
+scp src/garage_door/web_server.py garagedoor:~/garage-door/src/garage_door/web_server.py
+
+ sudo systemctl restart garagedoor
+ 
