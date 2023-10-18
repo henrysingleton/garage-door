@@ -15,7 +15,7 @@ class WebServer(BaseHTTPRequestHandler):
         if self.path == "/state":
            self.send_header("Content-type", "text/plain")
            self.end_headers()
-           self.wfile.write(bytes(str(controller.state.value), "utf-8"))
+           self.wfile.write(bytes(str(controller.current_state.value), "utf-8"))
 
         if self.path == "/":
             self.send_header("Content-type", "text/html")
@@ -37,11 +37,13 @@ class WebServer(BaseHTTPRequestHandler):
         if self.path == "/reset":
             controller.set_state_from_sensors()
         if self.path == "/reset/closed":
-            controller.state = State.CLOSED
+            controller.current_state = State.CLOSED
+            controller.target_state = State.CLOSED
         if self.path == "/reset/open":
-            controller.state = State.OPEN
+            controller.current_state = State.OPEN
+            controller.target_state = State.OPEN
 
-        self.wfile.write(bytes(str(controller.state.value), "utf-8"))
+        self.wfile.write(bytes(str(controller.current_state.value), "utf-8"))
 
 
 if __name__ == "__main__":
