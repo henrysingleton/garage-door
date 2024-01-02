@@ -1,8 +1,11 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from controller import DoorController, State
 
 # Server settings
 HOST_NAME = "127.0.0.1"
 SERVER_PORT = 8080
+
+controller = DoorController()
 
 
 class WebServer(BaseHTTPRequestHandler):
@@ -10,9 +13,9 @@ class WebServer(BaseHTTPRequestHandler):
         self.send_response(200)
 
         if self.path == "/state":
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(bytes("0", encoding="utf-8"))
+           self.send_header("Content-type", "text/plain")
+           self.end_headers()
+           self.wfile.write(bytes(str(controller.current_state.value), "utf-8"))
 
         if self.path == "/":
             self.send_header("Content-type", "text/html")
@@ -26,9 +29,21 @@ class WebServer(BaseHTTPRequestHandler):
         self.end_headers()
 
         if self.path == "/open":
-            self.wfile.write(bytes("done open", encoding="utf-8"))
+            controller.open()
+            # Handle error
         if self.path == "/close":
-            self.wfile.write(bytes("done close", encoding="utf-8"))
+            controller.close()
+            # Handle error
+        if self.path == "/reset":
+            controller.set_state_from_sensors()
+        if self.path == "/reset/closed":
+            controller.current_state = State.CLOSED
+            controller.target_state = State.CLOSED
+        if self.path == "/reset/open":
+            controller.current_state = State.OPEN
+            controller.target_state = State.OPEN
+
+        self.wfile.write(bytes(str(controller.current_state.value), "utf-8"))
 
 
 if __name__ == "__main__":
