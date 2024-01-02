@@ -132,7 +132,7 @@ button {
       int_handle = window.setInterval(updatedState, 2000);
 
       document.addEventListener("click", (e) => {
-        if (e.target.id === "open" || e.target.id === "close") {
+        if (e.target.id === "open" || e.target.id === "close" || e.target.id === "button") {
           const url = host + '/' + e.target.id
           console.log('sending request to ' + url)
           fetch(url, { method: 'PUT'}).then(logResponse).then(updatedState);

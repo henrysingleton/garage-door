@@ -34,6 +34,8 @@ class WebServer(BaseHTTPRequestHandler):
         if self.path == "/close":
             controller.close()
             # Handle error
+        if self.path == "/button":
+            controller.press_button()
         if self.path == "/reset":
             controller.set_state_from_sensors()
         if self.path == "/reset/closed":
